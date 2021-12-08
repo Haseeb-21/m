@@ -1,0 +1,145 @@
+delimiter | 
+CREATE EVENT Monthly_Sales_Person_Summary_Data
+    ON SCHEDULE 
+      EVERY 1 MONTH STARTS '2021-12-15 23:00:00'
+    DO 
+      BEGIN 
+		  INSERT INTO sales_by_sales_person_summary(num_toys_sold, sales_dollars, frn_sales_person_id, Year, Month)
+          SELECT count(purchase_item_id) as numToysSold,
+				sum(toy.price),
+				frn_sales_person_id,
+				YEAR(purchase_date),
+				MONTH(purchase_date)
+		  FROM purchase 
+		  INNER JOIN purchase_item 
+			ON purchase.purchase_id = purchase_item.frn_purchase_id 
+		  INNER JOIN sales_person 
+		    ON purchase.frn_sales_person_id = sales_person.sales_person_id 
+		  INNER JOIN toy 
+			ON purchase_item.frn_toy_id = toy.toy_id
+		  WHERE YEAR(purchase_date) = year(now()  - interval 1 MONTH) and MONTH(purchase_date) = month(now()  - interval 1 MONTH)
+		  GROUP BY frn_sales_person_id, YEAR(purchase_date), MONTH(purchase_date);
+    END | 
+delimiter ;
+
+
+delimiter | 
+CREATE EVENT Monthly_Sales_Status_Summary_Data
+    ON SCHEDULE 
+      EVERY 1 MONTH STARTS '2021-12-15 23:20:00'
+    DO 
+      BEGIN 
+      INSERT INTO sales_by_status_summary(total_sales, frn_purchase_status_id, Year, Month)
+		SELECT COUNT(purchase_id), frn_purchase_status_id, year(purchase_date) AS year, month(purchase_date) AS month
+		FROM purchase 
+        WHERE YEAR(purchase_date) = year(now()  - interval 1 MONTH) and MONTH(purchase_date) = month(now()  - interval 1 MONTH)
+		GROUP BY frn_purchase_status_id, year, month;
+    END | 
+delimiter ;
+
+delimiter | 
+CREATE EVENT Monthly_Sales_User_Summary_Data 
+    ON SCHEDULE 
+      EVERY 1 MONTH STARTS '2021-12-15 23:40:00'
+    DO 
+      BEGIN 
+      INSERT INTO sales_by_user_summary(num_toys_sold, sales_total, birth_year, purchase_year, purchase_month)
+      SELECT COUNT(purchase_item_id), 
+       SUM(toy.price),
+       YEAR(birth_date),
+       YEAR(purchase_date),
+       MONTH(purchase_date)
+	   FROM purchase 
+	   INNER JOIN purchase_item  
+		ON purchase_item.frn_purchase_id = purchase.purchase_id 
+	   INNER JOIN toy  
+		ON purchase_item.frn_toy_id = toy.toy_id 
+	   INNER JOIN user  
+		ON purchase.frn_user_id = user.user_id
+	   WHERE YEAR(purchase_date) = year(now()  - interval 1 MONTH) and MONTH(purchase_date) = month(now()  - interval 1 MONTH)
+	   GROUP BY YEAR(birth_date), YEAR(purchase_date), MONTH(purchase_date);
+    END | 
+delimiter ;
+
+select frn_sales_person_id, first_name, last_name, num_toys_sold as numToysSold 
+from sales_by_sales_person_summary 
+inner join sales_person 
+on sales_by_sales_person_summary.frn_sales_person_id = sales_person.sales_person_id 
+where Year = 2018 and Month = 12 
+group by frn_sales_person_id, numToysSold 
+order by numToysSold desc 
+limit 5;
+
+
+select frn_sales_person_id, first_name, last_name, sales_dollars as salesTotal 
+from sales_by_sales_person_summary 
+inner join sales_person 
+on sales_by_sales_person_summary.frn_sales_person_id = sales_person.sales_person_id 
+where Year = 2018 and Month = 12 
+group by frn_sales_person_id, salesTotal 
+order by salesTotal desc 
+limit 5; 
+
+
+select sum(total_sales) as totalSales
+from sales_by_status_summary
+where Year = 2018 and Month = 12
+group by total_sales;
+
+select
+(10523/total_sales*100,"%") AS CompletedPercent
+from sales_by_status_summary 
+group by total_sales;
+
+select sum(total_sales) as totalSales,
+ sum(case when frn_purchase_status_id=3 then total_sales else NULL END) AS Shipped,
+ CONCAT(sum(case when frn_purchase_status_id=3 then total_sales else NULL END)/
+ sum(total_sales)*100,"%") AS CompletedPercent
+from sales_by_status_summary 
+where year = 2018 and month = 12
+group by year, month;
+
+
+select num_toys_sold as numToysSold, sales_total as salesTotal, birth_year, purchase_year - birth_year as Age, purchase_year
+from sales_by_user_summary
+where purchase_year = 2018 and purchase_month = 12
+order by salesTotal desc
+limit 5;
+
+INSERT INTO sales_by_sales_person_summary(num_toys_sold, sales_dollars, frn_sales_person_id, Year, Month)
+SELECT count(purchase_item_id) as numToysSold,
+		sum(toy.price),
+		frn_sales_person_id,
+        YEAR(purchase_date),
+        MONTH(purchase_date)
+FROM purchase 
+INNER JOIN purchase_item 
+  ON purchase.purchase_id = purchase_item.frn_purchase_id 
+INNER JOIN sales_person 
+  ON purchase.frn_sales_person_id = sales_person.sales_person_id 
+INNER JOIN toy 
+  ON purchase_item.frn_toy_id = toy.toy_id
+GROUP BY frn_sales_person_id, YEAR(purchase_date), MONTH(purchase_date);
+
+
+
+
+INSERT INTO sales_by_status_summary(total_sales, frn_purchase_status_id, Year, Month)
+SELECT COUNT(purchase_id), frn_purchase_status_id, year(purchase_date) AS year, month(purchase_date) AS month
+FROM purchase 
+GROUP BY frn_purchase_status_id, year, month;
+
+INSERT INTO sales_by_user_summary(num_toys_sold, sales_total, birth_year, purchase_year, purchase_month)
+SELECT COUNT(purchase_item_id), 
+       SUM(toy.price),
+       YEAR(birth_date),
+       YEAR(purchase_date),
+       MONTH(purchase_date)
+FROM purchase 
+INNER JOIN purchase_item  
+  ON purchase_item.frn_purchase_id = purchase.purchase_id 
+INNER JOIN toy  
+  ON purchase_item.frn_toy_id = toy.toy_id 
+INNER JOIN user  
+  ON purchase.frn_user_id = user.user_id 
+GROUP BY YEAR(birth_date), YEAR(purchase_date), MONTH(purchase_date);
